@@ -25,6 +25,9 @@
 
 // include fdset
 #include <sys/select.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define N_NEWSTEAMS 10
 #define EXAMPLE_NEWS 5
