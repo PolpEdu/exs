@@ -14,11 +14,11 @@ int main()
         idp = fork(); // going to fork
         if (idp == 0)
         {
-            i++;
+            printf("[%d] I'm the son!\n", getpid());
         }
         else
         {
-            count_process(rand() % 10);
+            printf("[%d] I'm the father!\n", getpid());
         }
     }
     return 0;

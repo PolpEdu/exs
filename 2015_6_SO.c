@@ -124,18 +124,13 @@ int main(int argc, char *argv[])
     // TODO: Criar o processo gerador e os processos que vão efectuar a contagem (cada processo vai contar um número de 0-9)
     // A matriz aconsiderar encontra se em memória partilhada e é inicializada por um outro processo(processo gerador).
     // Cada processo conta um número específico que lhe é atribuído na altura da sua criação.
-    // O processo gerador é o primeiro a ser criado e é responsável por inicializar a matriz e atribuir os números aos processos filhos.
-
-    // Criação do processo gerador
+    main_process(); //! não deve ser assim por duvida ao stor.
     int i = 0;
     for (i = 0; i < TOTAL_MATRICES; i++)
     {
+
         idp = fork(); // going to fork
         if (idp == 0)
-        {
-            main_process();
-        }
-        else
         {
             count_process(rand() % 10, i);
         }
@@ -143,7 +138,10 @@ int main(int argc, char *argv[])
 
     // TODO: esperar pelo fim dos processos
     // (esperar pelo fim dos processos filho)
-    wait(NULL);
+    for (i = 0; i < TOTAL_MATRICES; i++)
+    {
+        wait(NULL);
+    }
 
     // TODO: remover recursos
     shmdt(mems_ptr);               // Unmaps a certain shared memory region from the current address space.
