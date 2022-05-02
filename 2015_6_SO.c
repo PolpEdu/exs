@@ -66,7 +66,7 @@ int main_process()
 
 #ifdef DEBUG
     // print the matrix created
-    printf("\n\nMatrix created:\n");
+    printf("\n\nMatrix nr %d created:\n", mems_ptr->matrix_number);
     for (i = 0; i < 10; i++)
     {
         for (j = 0; j < 10; j++)
@@ -80,6 +80,15 @@ int main_process()
 // Função a ser executada pelos processos que contam as ocorrências dos algarismos
 int count_process(int number_to_count, int matrix_number)
 {
+    // check if already counted this matrix and the number of matrixes counted isnt 3, sleep for 1s
+    //printf("processed: %d\n", mems_ptr->n_processed);
+    if (number_to_count < mems_ptr->n_processed && mems_ptr->n_processed != TOTAL_MATRICES)
+    {
+        printf("Sleeping... Already counted matrix nr: %d\n", matrix_number);
+        sleep(1);
+        return 0;
+    }
+
     // count the number of occurrences of the number_to_count in the matrix
     int i, j, count = 0;
     for (i = 0; i < 10; i++)
@@ -97,13 +106,7 @@ int count_process(int number_to_count, int matrix_number)
 
     // print the number of occurrences of the number_to_count in the matrix
     printf("Number %d found %d times in matrix: %d\n", number_to_count, count, matrix_number);
-
-    // check if already counted this matrix and the number of matrixes counted isnt 3, sleep for 1s
-    if (matrix_number <= mems_ptr->n_processed && mems_ptr->n_processed != TOTAL_MATRICES)
-    {
-        printf("Sleeping... Already counted matrix nr: %d\n", matrix_number);
-        sleep(1);
-    }
+    //printf("Processed: %d, in the matrix: %d\n", mems_ptr->n_processed, mems_ptr->matrix_number);
 }
 
 int main(int argc, char *argv[])
@@ -124,17 +127,22 @@ int main(int argc, char *argv[])
     // TODO: Criar o processo gerador e os processos que vão efectuar a contagem (cada processo vai contar um número de 0-9)
     // A matriz aconsiderar encontra se em memória partilhada e é inicializada por um outro processo(processo gerador).
     // Cada processo conta um número específico que lhe é atribuído na altura da sua criação.
-    main_process(); //! não deve ser assim por duvida ao stor.
     int i = 0;
-    for (i = 0; i < TOTAL_MATRICES; i++)
+    // create in total 11 processes. 1 for the main process, 10 for the counting processes, one for each number to count
+    for (i = 0; i< TOTAL_MATRICES; i++)
     {
-
-        idp = fork(); // going to fork
-        if (idp == 0)
+        main_process();
+        for (int j = 0; j < 10; j++)
         {
-            count_process(rand() % 10, i);
+            idp = fork();
+            if (idp == 0)
+            {
+                count_process(j, i);
+                exit(0);
+            }
         }
     }
+
 
     // TODO: esperar pelo fim dos processos
     // (esperar pelo fim dos processos filho)
