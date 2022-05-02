@@ -2,6 +2,8 @@
     "files.associations": {
         "*.js": "javascript",
         "stdlib.h": "c",
-        "types.h": "c"
+        "types.h": "c",
+        "semaphore.h": "c",
+        "semlib.h": "c"
     }
 }

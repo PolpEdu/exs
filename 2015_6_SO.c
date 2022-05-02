@@ -26,16 +26,18 @@ funcionamento do programa
 
 #include <stdio.h>     // printf
 #include <stdlib.h>    // for NULL
-#include "semlib.h"    //para ajudar a usar semáforos (SYSv)
+#include <semaphore.h> // sem_open, sem_close, sem_wait, sem_post, sem_setvalue
 #include <sys/wait.h>  //para esperar pelos filhos (wait.h)
 #include <sys/shm.h>   //shared memory
 #include <sys/types.h> //tipos tipo pid_t
 #include <unistd.h>    //para fork
-
-#define DEBUG 1 // testing purposes
+#include <fcntl.h>     //para usar o O_CREAT
+#include <sys/mman.h>  //para mapear a memória partilhada
 
 #define TOTAL_MATRICES 3 // número de matrizes a calcular
 // declaração de variáveis globais
+
+//#define DEBUG 1
 
 typedef struct mem_shared
 {
@@ -46,67 +48,94 @@ typedef struct mem_shared
 } mems;
 
 mems *mems_ptr;
+// ponteiro para a SM
+
+// semaforos a utilizar
+sem_t *worker_sem;
+sem_t *gerador_sem;
 
 // Função a ser executada pelo processo gerador that initializes the matrix in shared memory
 //! Processo Inicial!!
-int main_process()
+int gerador()
 {
 
     // initialize the matrix in shared memory with values from 0 to 9  randomly and gives to each matrix a different sequential number
-    int i, j;
-    for (i = 0; i < 10; i++)
+    int i, j, t;
+    for (t = 0; t < TOTAL_MATRICES; t++)
     {
-        for (j = 0; j < 10; j++)
+        //! Going to change shared memory matrix. Perform a wait in the semaphore.
+        sem_wait(gerador_sem);
+        mems_ptr->n_processed = 0;
+        mems_ptr->matrix_number = t + 1;
+        for (i = 0; i < 10; i++)
         {
-            mems_ptr->matrix[i][j] = rand() % 10;
-        }
-    }
-    mems_ptr->n_processed = 0;
-    mems_ptr->matrix_number++;
 
-#ifdef DEBUG
-    // print the matrix created
-    printf("\n\nMatrix nr %d created:\n", mems_ptr->matrix_number);
-    for (i = 0; i < 10; i++)
-    {
-        for (j = 0; j < 10; j++)
-        {
-            printf("%d ", mems_ptr->matrix[i][j]);
-        }
-        printf("\n");
-    }
-#endif
-}
-// Função a ser executada pelos processos que contam as ocorrências dos algarismos
-int count_process(int number_to_count, int matrix_number)
-{
-    // check if already counted this matrix and the number of matrixes counted isnt 3, sleep for 1s
-    //printf("processed: %d\n", mems_ptr->n_processed);
-    if (number_to_count < mems_ptr->n_processed && mems_ptr->n_processed != TOTAL_MATRICES)
-    {
-        printf("Sleeping... Already counted matrix nr: %d\n", matrix_number);
-        sleep(1);
-        return 0;
-    }
-
-    // count the number of occurrences of the number_to_count in the matrix
-    int i, j, count = 0;
-    for (i = 0; i < 10; i++)
-    {
-        for (j = 0; j < 10; j++)
-        {
-            if (mems_ptr->matrix[i][j] == number_to_count)
+            for (j = 0; j < 10; j++)
             {
-                count++;
+
+                mems_ptr->matrix[i][j] = rand() % 10;
             }
         }
+#ifdef DEBUG
+        // print the matrix created
+        printf("\n\nMatrix nr %d created:\n", mems_ptr->matrix_number);
+        for (i = 0; i < 10; i++)
+        {
+            for (j = 0; j < 10; j++)
+            {
+                printf("%d ", mems_ptr->matrix[i][j]);
+            }
+            printf("\n");
+        }
+#endif
+        sem_post(worker_sem); // signal to the worker that the matrix is ready, unlock the worker_sem
     }
 
-    mems_ptr->n_processed++;
+    exit(0);
+}
+// Função a ser executada pelos processos que contam as ocorrências dos algarismos
+int worker(int number_to_count)
+{
+    int i, j, counter = 0;
+    int matrizatual = 0;
 
-    // print the number of occurrences of the number_to_count in the matrix
-    printf("Number %d found %d times in matrix: %d\n", number_to_count, count, matrix_number);
-    //printf("Processed: %d, in the matrix: %d\n", mems_ptr->n_processed, mems_ptr->matrix_number);
+    while (1)
+    {
+        //! Wait in the semaphore.
+        sem_wait(worker_sem);
+        if (matrizatual == mems_ptr->matrix_number)
+        {
+            sem_post(worker_sem); // signal to the worker that the matrix is ready, unlock the worker_sem
+            if (matrizatual == TOTAL_MATRICES)
+            {
+                exit(0);
+            }
+            sleep(1);
+        }
+        else
+        {
+            counter = 0;
+            for (i = 0; i < 10; i++)
+            {
+                for (j = 0; j < 10; j++)
+                {
+                    if (mems_ptr->matrix[i][j] == number_to_count)
+                    {
+                        counter++;
+                    }
+                }
+            }
+
+            mems_ptr->n_processed++;
+            matrizatual = mems_ptr->matrix_number;
+            if (mems_ptr->n_processed == 10) // if all the matrices have been processed
+            {
+                sem_post(gerador_sem); // unlock the gerador_sem
+            }
+            sem_post(worker_sem); // signal to the worker that the matrix is ready, unlock the worker_sem
+            printf("Counted %d occurrences of %d in matrix nr %d\n", counter, number_to_count, mems_ptr->matrix_number);
+        }
+    }
 }
 
 int main(int argc, char *argv[])
@@ -117,8 +146,12 @@ int main(int argc, char *argv[])
 
     // Criação e mapeamento da memória partilhada
     // using #include <sys/shm.h>:
-    shmid = shmget(IPC_PRIVATE, sizeof(mems), 0666 | IPC_CREAT); // Obtains an identifier to an existing shared memory or creates a new one
+    shmid = shmget(IPC_PRIVATE, sizeof(mems), 0700 | IPC_CREAT); // Obtains an identifier to an existing shared memory or creates a new one
     mems_ptr = (mems *)shmat(shmid, NULL, 0);                    // Maps a certain shared memory region into the current process address  space.
+
+    // cria um named semaphore
+    worker_sem = sem_open("sem1", O_CREAT | O_EXCL, 0700, 0);  // cria um named semaphore com o nome "sem"
+    gerador_sem = sem_open("sem2", O_CREAT | O_EXCL, 0700, 1); // cria um named semaphore com o nome "sem"
 
     // Initialize the shared memory
     mems_ptr->n_processed = 0;
@@ -128,30 +161,37 @@ int main(int argc, char *argv[])
     // A matriz aconsiderar encontra se em memória partilhada e é inicializada por um outro processo(processo gerador).
     // Cada processo conta um número específico que lhe é atribuído na altura da sua criação.
     int i = 0;
-    // create in total 11 processes. 1 for the main process, 10 for the counting processes, one for each number to count
-    for (i = 0; i< TOTAL_MATRICES; i++)
+    for (; i < 11; i++)
     {
-        main_process();
-        for (int j = 0; j < 10; j++)
+        idp = fork();
+        if (idp == 0)
         {
-            idp = fork();
-            if (idp == 0)
+            // child process
+            if (i == 0)
             {
-                count_process(j, i);
-                exit(0);
+                gerador(); // gerador
             }
+            else
+            {
+                worker(i - 1); // consumidor
+            }
+            exit(0);
         }
     }
 
-
     // TODO: esperar pelo fim dos processos
     // (esperar pelo fim dos processos filho)
-    for (i = 0; i < TOTAL_MATRICES; i++)
+    for (i = 0; i < 11; i++) // 11 processes, 11 waits.
     {
         wait(NULL);
     }
 
     // TODO: remover recursos
+    sem_close(worker_sem);  // close the semaphore
+    sem_close(gerador_sem); // close the semaphore
+    sem_unlink("sem1");     // detach the named semaphore
+    sem_unlink("sem2");     // detach the named semaphore
+
     shmdt(mems_ptr);               // Unmaps a certain shared memory region from the current address space.
     shmctl(shmid, IPC_RMID, NULL); // Removes a shared memory segment, because we pass IPC_RMID.
 
