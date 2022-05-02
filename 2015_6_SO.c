@@ -102,13 +102,13 @@ int worker(int number_to_count)
     while (1)
     {
         //! Wait in the semaphore.
-        sem_wait(worker_sem);
+        sem_wait(worker_sem); // we are going to change the shared memory matrix. So we need to wait in the semaphore.
         if (matrizatual == mems_ptr->matrix_number)
         {
             sem_post(worker_sem); // signal to the worker that the matrix is ready, unlock the worker_sem
             if (matrizatual == TOTAL_MATRICES)
             {
-                exit(0);
+                exit(0); // we can close the worker processes because we have counted all the matrices
             }
             sleep(1);
         }
@@ -126,9 +126,9 @@ int worker(int number_to_count)
                 }
             }
 
-            mems_ptr->n_processed++;
-            matrizatual = mems_ptr->matrix_number;
-            if (mems_ptr->n_processed == 10) // if all the matrices have been processed
+            mems_ptr->n_processed++;               // increment the number of processed numbers
+            matrizatual = mems_ptr->matrix_number; // update the current matrix number
+            if (mems_ptr->n_processed == 10)       // if all the matrices have been processed
             {
                 sem_post(gerador_sem); // unlock the gerador_sem
             }
@@ -150,8 +150,8 @@ int main(int argc, char *argv[])
     mems_ptr = (mems *)shmat(shmid, NULL, 0);                    // Maps a certain shared memory region into the current process address  space.
 
     // cria um named semaphore
-    worker_sem = sem_open("sem1", O_CREAT | O_EXCL, 0700, 0);  // cria um named semaphore com o nome "sem"
-    gerador_sem = sem_open("sem2", O_CREAT | O_EXCL, 0700, 1); // cria um named semaphore com o nome "sem"
+    worker_sem = sem_open("sem1", O_CREAT | O_EXCL, 0700, 0);  // cria um named semaphore com o nome "sem1"
+    gerador_sem = sem_open("sem2", O_CREAT | O_EXCL, 0700, 1); // cria um named semaphore com o nome "sem2"
 
     // Initialize the shared memory
     mems_ptr->n_processed = 0;
@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                worker(i - 1); // consumidor
+                worker(i - 1); // create a worker for each number in the 3 matrices.
             }
             exit(0);
         }
